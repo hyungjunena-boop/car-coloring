@@ -1,1 +1,264 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>🚗 자동차 색칠놀이</title>
+<link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; overflow: hidden; background: #f0f4f8; font-family: 'Jua', cursive; }
+.app { display: flex; height: 100vh; }
+.sidebar {
+  width: 120px; flex-shrink: 0; background: #fff;
+  box-shadow: 2px 0 12px rgba(0,0,0,0.08);
+  display: flex; flex-direction: column;
+  padding: 10px 8px; gap: 10px; overflow-y: auto; z-index: 10;
+}
+.s-title { font-size: 0.72rem; color: #bbb; text-align: center; }
+.colors-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 5px; }
+.color-btn {
+  aspect-ratio: 1; border-radius: 50%; border: 3px solid #fff;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+  cursor: pointer; touch-action: manipulation; transition: transform .1s;
+}
+.color-btn.active { border-color: #333; box-shadow: 0 0 0 2px #fff,0 0 0 4px #333; transform: scale(1.12); }
+.tool-btn {
+  width: 100%; padding: 7px 4px; background: #f8f8f8; border: 2px solid #ddd;
+  border-radius: 10px; font-family: 'Jua',cursive; font-size: 0.72rem; color: #777;
+  cursor: pointer; touch-action: manipulation; text-align: center;
+}
+.tool-btn.active { background: #333; color: #fff; border-color: #333; }
+.tool-btn.danger { color: #e05555; border-color: #ffcccc; background: #fff0f0; }
+.size-preview {
+  display: flex; align-items: center; justify-content: center;
+  height: 34px; background: #f8f8f8; border-radius: 10px; border: 2px solid #eee;
+}
+.size-dot { border-radius: 50%; background: #333; transition: width .15s,height .15s; }
+input[type=range].sz {
+  -webkit-appearance: none; width: 100%; height: 4px;
+  border-radius: 2px; background: #ddd; touch-action: manipulation;
+}
+input[type=range].sz::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 22px; height: 22px; border-radius: 50%;
+  background: #fff; border: 3px solid #aaa; box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+}
+.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+.cat-tabs { display: flex; background: #fff; border-bottom: 1px solid #eee; flex-shrink: 0; }
+.cat-tab {
+  flex: 1; padding: 8px 2px; font-family: 'Jua',cursive; font-size: 0.68rem;
+  color: #bbb; cursor: pointer; text-align: center;
+  border-bottom: 3px solid transparent; touch-action: manipulation;
+}
+.cat-tab.active { color: #333; border-bottom-color: #FF6B35; }
+.car-tabs {
+  display: flex; background: #fafafa;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.05);
+  overflow-x: auto; flex-shrink: 0; padding: 0 6px; scrollbar-width: none;
+}
+.car-tabs::-webkit-scrollbar { display: none; }
+.car-tab {
+  flex-shrink: 0; padding: 7px 12px; font-family: 'Jua',cursive; font-size: 0.75rem;
+  color: #aaa; cursor: pointer; border-bottom: 2px solid transparent;
+  touch-action: manipulation; white-space: nowrap;
+}
+.car-tab.active { color: #FF6B35; border-bottom-color: #FF6B35; }
+.canvas-wrap {
+  flex: 1; position: relative;
+  display: flex; align-items: center; justify-content: center; overflow: hidden;
+}
+.canvas-bg { position: absolute; inset: 0; background: #fff; }
+canvas#draw {
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+  touch-action: none; cursor: crosshair; z-index: 2;
+}
+/* mix-blend-mode: multiply → 흰색은 투명처럼, 검정 선만 보임 */
+img#car-img {
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+  object-fit: contain; pointer-events: none; user-select: none;
+  z-index: 3;
+  mix-blend-mode: multiply;
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="sidebar">
+    <div class="s-title">🎨 색깔</div>
+    <div class="colors-grid" id="colorsGrid"></div>
+    <div class="s-title">✏️ 굵기</div>
+    <div class="size-preview"><div class="size-dot" id="sizeDot"></div></div>
+    <input type="range" class="sz" id="sizeSlider" min="2" max="50" value="14">
+    <button class="tool-btn" id="eraserBtn">🧹 지우개</button>
+    <button class="tool-btn danger" id="clearBtn">🗑️ 전체<br>지우기</button>
+  </div>
+  <div class="main">
+    <div class="cat-tabs" id="catTabs"></div>
+    <div class="car-tabs" id="carTabs"></div>
+    <div class="canvas-wrap" id="canvasWrap">
+      <div class="canvas-bg"></div>
+      <canvas id="draw"></canvas>
+      <img id="car-img" src="" alt="">
+    </div>
+  </div>
+</div>
+<script>
+var CARS = [
+  {name:"구급차",cat:"특수차",src:"images/Ambulance.jpg"},
+  {name:"소방차",cat:"특수차",src:"images/Fire_truck.jpg"},
+  {name:"덤프트럭",cat:"특수차",src:"images/Dump_Truck.jpg"},
+  {name:"콘크리트믹서",cat:"특수차",src:"images/Concrete_Mixer.jpg"},
+  {name:"벤츠 트럭",cat:"특수차",src:"images/Benz_Truck.jpg"},
+  {name:"현대 캐스퍼",cat:"국산차",src:"images/Hyundai_Casper.jpg"},
+  {name:"현대 카니발",cat:"국산차",src:"images/Hyundai_Carnival.jpg"},
+  {name:"현대 팰리세이드",cat:"국산차",src:"images/Hyundai_Palisade.jpg"},
+  {name:"현대 싼타페",cat:"국산차",src:"images/Hyundai_Santa_Fe.jpg"},
+  {name:"기아 레이",cat:"국산차",src:"images/KIA_Ray.jpg"},
+  {name:"기아 K9",cat:"국산차",src:"images/Kia_K9.jpg"},
+  {name:"KGM 티볼리",cat:"국산차",src:"images/KGM_Tivoli.jpg"},
+  {name:"제네시스 G80",cat:"국산차",src:"images/Genesis_G80.jpg"},
+  {name:"제네시스 GV80",cat:"국산차",src:"images/Genesis_GV80.jpg"},
+  {name:"BMW",cat:"수입차",src:"images/BMW_5.JPG"},
+  {name:"BMW X3",cat:"수입차",src:"images/BMW_X3.jpg"},
+  {name:"아우디",cat:"수입차",src:"images/Audi_Sedan.JPG"},
+  {name:"벤츠",cat:"수입차",src:"images/Benz_sedan.JPG"},
+  {name:"벤츠 G바겐",cat:"수입차",src:"images/Benz_G_wagon.jpg"},
+  {name:"마이바흐 GLS",cat:"수입차",src:"images/Benz_Maybach.jpg"},
+  {name:"볼보 S90",cat:"수입차",src:"images/Volvo_S90.jpg"},
+  {name:"포르쉐 911",cat:"스포츠카",src:"images/Porsche_911.JPG"},
+  {name:"포르쉐 카이엔",cat:"스포츠카",src:"images/Porsche_SUV.JPG"},
+  {name:"람보르기니",cat:"스포츠카",src:"images/Lamborghini_Huracan.JPG"},
+  {name:"폴스타 5",cat:"스포츠카",src:"images/Polestar_5.jpg"},
+  {name:"테슬라 X",cat:"수입차",src:"images/Tesla_x.JPG"},
+  {name:"토요타 시에나",cat:"수입차",src:"images/Toyota_Siena.jpg"}
+];
+var COLORS=['#E03131','#E8590C','#F5C800','#2F9E44','#1971C2','#364FC7','#7048E8','#E64980','#7D4E29','#1A1A1A','#FFFFFF','#AAAAAA'];
+var CATS=['전체','특수차','국산차','수입차','스포츠카'];
+var state={color:COLORS[0],eraser:false,size:14,drawing:false,lx:0,ly:0,cat:'전체'};
+var canvas=document.getElementById('draw');
+var ctx=canvas.getContext('2d');
+var carImg=document.getElementById('car-img');
+var canvasWrap=document.getElementById('canvasWrap');
 
+var cg=document.getElementById('colorsGrid');
+COLORS.forEach(function(c,i){
+  var b=document.createElement('div');
+  b.className='color-btn'+(i===0?' active':'');
+  b.style.backgroundColor=c;
+  if(c==='#FFFFFF')b.style.border='3px solid #ddd';
+  b.addEventListener('click',function(){
+    state.color=c;state.eraser=false;
+    document.querySelectorAll('.color-btn').forEach(function(x){x.classList.remove('active');});
+    document.getElementById('eraserBtn').classList.remove('active');
+    b.classList.add('active');
+  });
+  cg.appendChild(b);
+});
+
+document.getElementById('eraserBtn').addEventListener('click',function(){
+  state.eraser=!state.eraser;
+  this.classList.toggle('active',state.eraser);
+  document.querySelectorAll('.color-btn').forEach(function(x){x.classList.remove('active');});
+});
+
+var sl=document.getElementById('sizeSlider');
+var sd=document.getElementById('sizeDot');
+sl.addEventListener('input',function(){
+  state.size=parseInt(this.value);
+  sd.style.width=state.size+'px';sd.style.height=state.size+'px';
+});
+sd.style.width=state.size+'px';sd.style.height=state.size+'px';
+
+document.getElementById('clearBtn').addEventListener('click',function(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+});
+
+var catTabsEl=document.getElementById('catTabs');
+CATS.forEach(function(cat){
+  var t=document.createElement('div');
+  t.className='cat-tab'+(cat==='전체'?' active':'');
+  t.textContent=cat;
+  t.addEventListener('click',function(){
+    state.cat=cat;
+    document.querySelectorAll('.cat-tab').forEach(function(x){x.classList.remove('active');});
+    t.classList.add('active');
+    buildCarTabs();loadCar(0);
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+  });
+  catTabsEl.appendChild(t);
+});
+
+function filteredCars(){
+  return state.cat==='전체'?CARS:CARS.filter(function(c){return c.cat===state.cat;});
+}
+function buildCarTabs(){
+  var el=document.getElementById('carTabs');
+  el.innerHTML='';
+  filteredCars().forEach(function(car,i){
+    var t=document.createElement('div');
+    t.className='car-tab'+(i===0?' active':'');
+    t.textContent=car.name;
+    t.addEventListener('click',function(){
+      document.querySelectorAll('.car-tab').forEach(function(x){x.classList.remove('active');});
+      t.classList.add('active');
+      loadCar(i);ctx.clearRect(0,0,canvas.width,canvas.height);
+    });
+    el.appendChild(t);
+  });
+}
+function loadCar(idx){
+  var cars=filteredCars();
+  if(cars[idx])carImg.src=cars[idx].src;
+}
+function resizeCanvas(){
+  var r=canvasWrap.getBoundingClientRect();
+  var old=ctx.getImageData(0,0,canvas.width,canvas.height);
+  canvas.width=r.width;canvas.height=r.height;
+  ctx.putImageData(old,0,0);
+}
+function getPos(e){
+  var r=canvas.getBoundingClientRect();
+  var src=e.touches?e.touches[0]:e;
+  return{x:src.clientX-r.left,y:src.clientY-r.top};
+}
+function startDraw(e){
+  e.preventDefault();state.drawing=true;
+  var p=getPos(e);state.lx=p.x;state.ly=p.y;
+  ctx.beginPath();
+  if(state.eraser){
+    ctx.globalCompositeOperation='destination-out';
+    ctx.arc(p.x,p.y,state.size,0,Math.PI*2);
+    ctx.fillStyle='rgba(0,0,0,1)';ctx.fill();
+    ctx.globalCompositeOperation='source-over';
+  }else{
+    ctx.arc(p.x,p.y,state.size/2,0,Math.PI*2);
+    ctx.fillStyle=state.color;ctx.fill();
+  }
+}
+function doDraw(e){
+  e.preventDefault();if(!state.drawing)return;
+  var p=getPos(e);
+  ctx.beginPath();ctx.moveTo(state.lx,state.ly);ctx.lineTo(p.x,p.y);
+  if(state.eraser){
+    ctx.globalCompositeOperation='destination-out';
+    ctx.strokeStyle='rgba(0,0,0,1)';ctx.lineWidth=state.size*2.5;
+  }else{
+    ctx.globalCompositeOperation='source-over';
+    ctx.strokeStyle=state.color;ctx.lineWidth=state.size;
+  }
+  ctx.lineCap='round';ctx.lineJoin='round';ctx.stroke();
+  ctx.globalCompositeOperation='source-over';
+  state.lx=p.x;state.ly=p.y;
+}
+function endDraw(){state.drawing=false;}
+canvas.addEventListener('mousedown',startDraw);
+canvas.addEventListener('mousemove',doDraw);
+canvas.addEventListener('mouseup',endDraw);
+canvas.addEventListener('touchstart',startDraw,{passive:false});
+canvas.addEventListener('touchmove',doDraw,{passive:false});
+canvas.addEventListener('touchend',endDraw,{passive:false});
+window.addEventListener('resize',resizeCanvas);
+setTimeout(function(){resizeCanvas();buildCarTabs();loadCar(0);},100);
+</script>
+</body>
+</html>
